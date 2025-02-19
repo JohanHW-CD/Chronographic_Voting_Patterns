@@ -1,14 +1,18 @@
-# Chronographuc EU Voting Patterns
+# Chronographic EU Voting Patterns
 Can you optimize the probability of your EU petition to be approved? 
 
 Of course! Different categories of petitions pass more easily depending on time of day, time of year, year, and so. This repo plays with VoteWatchers European Parliament dataset to find contributing variables in voting patterns.
 
+## Trend xamples:
+
 Pairwise Similaities between voters, first 46 MEPs alphabetically:
 
 ![image](https://github.com/user-attachments/assets/aa730087-bdaf-4692-af91-e2895bdd8f87)
+
 2D Voting patterns colourd by European Parliament Group:
 
 ![image](https://github.com/user-attachments/assets/fb7c66f1-894f-484a-8ae5-4dcc7845e111)
+
 3D graph example (interactive during runtime):
 
 ![image](https://github.com/user-attachments/assets/db73a0ef-7214-4618-9828-ae042dd9005c)
