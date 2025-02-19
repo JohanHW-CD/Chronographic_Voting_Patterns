@@ -1,4 +1,4 @@
-# Chronological Changes in Vote Similarities
+# Chronographuc EU Voting Patterns
 Can you optimize the probability of your EU petition to be approved? 
 
 Of course! Different categories of petitions pass more easily depending on time of day, time of year, year, and so. This repo plays with VoteWatchers European Parliament dataset to find contributing variables in voting patterns.
