@@ -1,0 +1,384 @@
+# # # # # # # 
+# Samples
+# # # # # # # 
+
+#excel10 = "C:\Users\johan\MEP\VoteWatch\EP6_RCVs_2022_06_13.xlsx"
+#excel11 = "C:\Users\johan\MEP\VoteWatch\EP6_Voted docs.xlsx"
+#excel20 = "C:\Users\johan\MEP\VoteWatch\EP7_RCVs_2014_06_19.xlsx"
+#excel22 = "C:\Users\johan\MEP\VoteWatch\EP6_RCVs_2022_06_13.xlsx"
+#excel30 = "C:\Users\johan\MEP\VoteWatch\EP6_RCVs_2022_06_13.xlsx"
+#excel31 = "C:\Users\johan\MEP\VoteWatch\EP6_RCVs_2022_06_13.xlsx"
+#excel41 = "C:\Users\johan\MEP\VoteWatch\EP9_RCVs_2022_06_22.xlsx"
+#excel42 = "C:\Users\johan\MEP\VoteWatch\EP6_RCVs_2022_06_13.xlsx"
+
+
+# # # # # # # # 
+# Dependencies
+# # # # # # # # 
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+import matplotlib.colors as mcolors
+import seaborn as sns
+from sklearn.decomposition import PCA
+import plotly.express as px
+import plotly.colors as pc
+from pandas.plotting import radviz
+
+
+# # # # # # # # # 
+# Functions 
+# # # # # # # # # 
+
+def check_similarity():
+    """
+    Assumptions:
+       - The country, party, and EPG are in columns named "Country", "Party", and "EPG" respectively.
+       - All other columns (from a certain point until the end) contain vote data.
+    """
+
+    def embed(value):
+        if int(value) == 1:
+            return 1
+        elif int(value) == 2:
+            return 0
+        else:
+            return None
+
+    def similarity_measure(votes1, votes2):
+        """
+        Measure pairwise voter's votes similarities
+        """
+        same = 0
+        count = 0
+        for v1, v2 in zip(votes1, votes2):
+            if v1 is not None and v2 is not None:
+                count += 1
+                if v1 == v2:
+                    same += 1
+        return same / count if count > 0 else 0.5
+
+    def similarity_matrix(all_meps):
+        mep_list = list(all_meps.values())
+        n = len(mep_list)
+        sim_matrix = np.zeros((n, n))
+        for i in range(n):
+            print("similarity calc: ",mep_list[i]["full_name"])
+            for j in range(i, n):
+                measure = similarity_measure(mep_list[i]["votes"], mep_list[j]["votes"])
+                sim_matrix[i, j] = measure
+                sim_matrix[j, i] = measure
+        return sim_matrix
+
+    # Note, I run locally! Match thes with the EP files I uploaded or get own copies from VoteWatchers
+    location = r"C:\Users\johan\MEP\VoteWatch\EP9_RCVs_2022_06_22.xlsx"
+    # Read the Excel file into a DataFrame.
+    df = pd.read_excel(location, nrows = 46, usecols="A:BB")     # i have a very small subset
+    print("import done!")
+
+    # Inspect the columns to see what you have:
+    #print("All columns in DataFrame:", df.columns.tolist())
+
+    # List of columns that will NOT be part of the votes dictionary:
+    non_vote_cols = ['WebisteEpID', 'FullName', 'Activ', 'Country', 'Party', 'EPG', 'Start', 'End']
+
+    # Determine which columns to treat as vote columns:
+    all_meps = {}
+    vote_columns = [col for col in df.columns if col not in non_vote_cols]
+    print("categorization done!")
+
+
+    for _, row in df.iterrows():
+        # Extract the needed fields
+        ID = row['WebisteEpID']
+        full_name = row['FullName']
+        country = row['Country']
+        party = row['Party']
+        epg = row['EPG']
+        start_date = row['Start']
+        end_date = row['End']
+
+        mep = {
+            "ID": ID,
+            "country": country,
+            "party": party,
+            "epg": epg,
+            "full_name": full_name
+        }
+
+        votes_list = []
+            
+        # Iterate over vote columns
+        for vote in vote_columns:
+            v = embed(row[vote])
+            if v == -1:
+                continue
+            else:
+                votes_list.append(v)
+
+        mep["votes"] = votes_list
+        all_meps[ID] = mep
+
+        # Add the votes list into the MEP's dictionary under key 'votes'
+        print("loaded: ", full_name)
+
+
+    labels = [mep["full_name"] for mep in all_meps.values()]
+    print("Example of labels for data: ", labels[0], labels[1], labels[2])
+
+    sim_matrix = similarity_matrix(all_meps)
+    sim_df = pd.DataFrame(sim_matrix, index=labels, columns=labels)
+
+
+    return similarity_matrix(all_meps)
+
+  # If it's the first time you run this, remember to save:
+  #  print(sim_df.to_string())  
+  #  np.save('sim_matrix.npy', sim_matrix)
+  #  np.save('labels.npy', labels)
+  #  np.save('all_meps.npy', all_meps, allow_pickle=True)
+
+
+def load():
+    #print("loading data")
+    sim_matrix = np.load('sim_matrix.npy')
+    labels = np.load('labels.npy')
+    all_meps = np.load('all_meps.npy', allow_pickle=True).item()
+    #print("loaded similarity matrix")
+    sim_df = pd.DataFrame(sim_matrix, index=labels, columns=labels)
+    #print(sim_df.to_string())
+    return sim_matrix, labels, all_meps
+
+
+#sim_matrix = check_similarity()     # this is saved, so load() fetches the previous results
+sim_matrix, labels, all_meps = load()
+dis_matrix = 1 - sim_matrix     # convert for MDS
+
+plt.figure(figsize=(10, 8))
+sns.heatmap(sim_matrix, cmap='viridis', annot=False)
+plt.title("Pairwise Similarity Matrix")
+plt.show()
+
+
+def validate_distance_matrix(matrix):
+    """Check format of dis_matrix
+    Voting distance are non-euclidean"""
+
+    def check_symmetry(matrix):
+        return np.allclose(matrix, matrix.T, equal_nan=True)
+    def check_non_negative_or_none(matrix):
+        return np.all(
+            (matrix >= 0) | np.isnan(matrix))  # Allow non-negative or NaN (for None)
+
+    # Replace None with np.nan for compatibility
+    matrix_checked = np.where(matrix == None, np.nan, matrix)
+    is_symmetric = check_symmetry(matrix_checked)
+    is_valid = check_non_negative_or_none(matrix_checked)
+    return is_symmetric, is_valid
+
+    # Run the combined validation
+    is_symmetric, is_valid = validate_distance_matrix(dis_matrix)
+    print(f"Distance matrix is symmetric: {is_symmetric}")
+    print(f"Distance matrix contains only non-negative values or None: {is_valid}")
+
+validate_distance_matrix(dis_matrix)
+
+def MDS(D, dims):
+    """ Classical Multidimensional Scaling 
+    Starts with a lot of tests to ensure format in case unlucky data"""
+
+    D = np.where(D == None, 0.5, D)
+    D = np.nan_to_num(D, nan=0.5, posinf=0.5, neginf=0.5)
+    D = D.astype(float)
+
+    n = len(D[0])
+    D2 = D**2
+    II = np.eye(n)    
+    I = np.ones((n, 1))
+    H = II - (I@I.T)/n
+    B = -0.5 *H@D2@H
+    B = (B+B.T)/2
+    print("B is symmetric: ", np.allclose(B, B.T))  # B is symmetric
+    print(np.isnan(D).any())  # This is False
+    print(np.isinf(D).any())  # This is False
+    print((D < 0).any())      # This is False
+
+    eigenvals, eigenvecs = np.linalg.eig(B)
+    eigenvals = np.real(eigenvals)
+    eigenvecs = np.real(eigenvecs)
+    sorters = np.argsort(eigenvals)[::-1]
+    eigenvals = eigenvals[sorters]
+    eigenvecs = eigenvecs[:, sorters]
+    eigenvals[eigenvals < 0] = 0  # Set negatives to 0  i dont know why these even exist ffs
+    values_matrix = np.diag(np.sqrt(eigenvals[:dims]))
+    vector_matrix = eigenvecs[:, :dims]
+
+    projection = vector_matrix @ values_matrix
+    return projection, eigenvals, eigenvecs
+    
+projection, eigenvals, eigenvecs = MDS(dis_matrix, 2)
+
+# Normalize eigenvalues
+eigenvals_normalized = eigenvals / np.sum(eigenvals)
+
+# Cumulative proportion of variance explained
+cumulative_variance = np.cumsum(eigenvals_normalized)
+
+# Plot the eigenvalues
+plt.figure(figsize=(10, 6))
+plt.plot(eigenvals_normalized, marker='o', label='Variance Explained')
+plt.plot(cumulative_variance, marker='o', linestyle='--', label='Cumulative Variance')
+plt.title('Scree Plot')
+plt.xlabel('Dimension')
+plt.ylabel('Proportion of Variance Explained')
+plt.axhline(y=0.95, color='r', linestyle='--', label='95% Variance Threshold')
+plt.legend()
+plt.grid()
+plt.show()
+
+print("the following are the non-euclidean outcomes: ")
+print(eigenvals[eigenvals < 0])
+
+
+def plot_embedding(projection, all_meps, title, feature='country'):
+    """
+    Plots 2D embedding with unique colors for each value of the specified feature.
+
+    Args:
+    - projection: 2D embedding (n_samples, 2).
+    - all_meps: Dictionary containing MEP data.
+    - title: Title of the plot.
+    - feature: Feature to use for coloring ('country' or 'epg').
+    """
+    plt.figure(figsize=(14, 10))  # Increased figure size to prevent clipping
+
+    # Extract feature values
+    feature_values = [all_meps[label][feature] for label in all_meps.keys()]
+    unique_features = sorted(set(feature_values))  # Sorted for consistent ordering
+    num_features = len(unique_features)
+
+    # Generate distinct colors for large numbers of categories
+    if num_features <= 10:
+        color_map = cm.get_cmap('tab10', num_features)
+    elif num_features <= 20:
+        color_map = cm.get_cmap('tab20', num_features)
+    else:
+        # Generate a high-resolution colormap for >20 features
+        base_cmap = cm.get_cmap('tab20b')  # Use a perceptually distinct qualitative colormap
+        colors = [base_cmap(i / num_features) for i in range(num_features)]
+        color_map = lambda i: colors[i]
+
+    # Map each feature value to a unique color
+    feature_to_color = {feature: mcolors.rgb2hex(color_map(i)) for i, feature in enumerate(unique_features)}
+
+    # Plot each point with its assigned color
+    for label, (x, y) in zip(all_meps.keys(), projection):
+        mep_info = all_meps[label]
+        value = mep_info[feature]
+        color = feature_to_color[value]
+        plt.scatter(x, y, alpha=0.7, color=color, label=None)
+
+    # Add a legend for the feature values
+    legend_patches = [
+        plt.Line2D([0], [0], marker='o', color=color, linestyle='', markersize=8, label=feature)
+        for feature, color in feature_to_color.items()
+    ]
+    plt.legend(handles=legend_patches, title=feature.capitalize(), bbox_to_anchor=(1.05, 1), loc='upper left')
+
+    # Add title, labels, and layout adjustments
+    plt.title(title)
+    plt.xlabel("Dimension 1")
+    plt.ylabel("Dimension 2")
+    plt.grid(True)
+
+    # Adjust layout to avoid clipping
+    plt.tight_layout()
+    plt.show()
+    
+projections = {
+    "First 2 Eigenvectors": eigenvecs[:, :2] @ np.diag(np.sqrt(eigenvals[:2])),
+    }
+
+  # How to fetch other dimensions of the variance:
+  # "First 5 Eigenvectors": eigenvecs[:, :5] @ np.diag(np.sqrt(eigenvals[:5])),
+  # "First 7 Eigenvectors": eigenvecs[:, :7] @ np.diag(np.sqrt(eigenvals[:7])),
+
+
+# Plot each embedding
+for title, proj in projections.items():
+    plot_embedding(projection, all_meps, title="Projection by EPG", feature='epg')
+    plot_embedding(projection, all_meps, title="Projection by Country", feature='country')
+
+
+
+def plot_3d_scatter(projection, all_meps, feature='country'):
+    """ Multidimensional patterns become clearer in 3D, 
+    opens an interactive browser tab"""
+
+    # If you want the PCA version run:
+    # pca_3d = PCA(n_components=3)
+    # projection_3d = pca_3d.fit_transform(projection)
+
+    # Prepare a DataFrame with the selected feature
+    data = []
+    for label, (x, y, z) in zip(all_meps.keys(), projection):
+        value = all_meps[label][feature]
+        data.append({'x': x, 'y': y, 'z': z, feature: value})
+    df = pd.DataFrame(data)
+    
+    # Ensure unique and distinct colors
+    unique_features = df[feature].unique()
+    num_features = len(unique_features)
+
+    # Generate distinct colors
+    if num_features <= 10:
+        colors = pc.qualitative.Set1
+    elif num_features <= 20:
+        colors = pc.qualitative.Set3
+    else:
+        colors = pc.qualitative.Alphabet
+
+    # Map colors to feature values
+    color_map = {feature_value: colors[i % len(colors)] for i, feature_value in enumerate(unique_features)}
+
+    # Create a 3D scatter plot
+    fig = px.scatter_3d(
+        df,
+        x='x',
+        y='y',
+        z='z',
+        color=feature,
+        title=f"3D Projection of Data by {feature.capitalize()}",
+        color_discrete_map=color_map
+    )
+    fig.show()
+
+
+projection, eigenvals, eigenvecs = MDS(dis_matrix, 3)
+plot_3d_scatter(projection, all_meps, feature='country')
+plot_3d_scatter(projection, all_meps, feature='epg')
+
+def plot_radviz(projection, all_meps, feature='country'):
+    """ Creates a radviz plot. RadViz is a technique for visualizing multivariate data by
+        distributing each variable evenly along the edge of a circle and positioning 
+        data points inside based on their values"""
+
+    # Prepare a DataFrame, preferably with more than 3 dimensions!
+    data = []
+    for label, vector in zip(all_meps.keys(), projection):
+        entry = {f"dim{i+1}": value for i, value in enumerate(vector)}
+        entry[feature] = all_meps[label][feature]
+        data.append(entry)
+    df = pd.DataFrame(data)
+
+    # Plot RadViz
+    plt.figure(figsize=(10, 8))
+    radviz(df, feature)
+    plt.title(f"RadViz of 7D Data by {feature.capitalize()}")
+    plt.show()
+
+# Call for 'country' and 'epg'
+plot_radviz(projection, all_meps, feature='country')
+plot_radviz(projection, all_meps, feature='epg')
