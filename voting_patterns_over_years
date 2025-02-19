@@ -1,0 +1,328 @@
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+import plotly.express as px
+import plotly.colors as pc
+from sklearn.decomposition import PCA
+
+
+# Descriptive excel file - change for your locality or fit it to this Git
+excel_file = r"C:\Users\johan\MEP\VoteWatch\EP9_Voted docs.xlsx"
+
+# Example voting category to work with, see VoteWatchers for more
+access = "Foreign & security policy"
+#access = "Environment & public health"
+#access = "Civil liberties, justice & home affairs"
+
+df = pd.read_excel(excel_file)
+
+# Print the column names
+print("Columns in DataFrame:", df.columns.tolist())
+
+# Fix date format
+df['Date'] = pd.to_datetime(df['Date'], format='%d.%m.%Y')
+
+# Add a 'Quarter' column representing the quarter of the year
+df['Quarter'] = df['Date'].dt.to_period('Q')
+df['Year'] = df['Date'].dt.to_period('Y')
+
+# Limit to the first 5 motions for testing
+#df_test = df.iloc[:5]
+
+# Policy filtration holder
+policy_dict = {}
+
+# Iterate over the rows of the subset DataFrame
+for _, row in df.iterrows():
+    # Extract information using the header names
+    vote_id   = row["Vote ID"]          # Col A
+    date      = row["Date"]             # Col D
+    quarter   = row["Quarter"]          # extension
+    year      = row["Year"]             # extension
+    leg       = row["Leg/Non-Leg/Bud"]   # Col G
+    policy    = row["Policy area"]       # Col O
+    passed    = row["Vote"]              # Col U
+    yes_count = row["Yes"]               # Col V
+    no_count  = row["No"]                # Col W
+    absences  = row["Abs"]               # Col X
+
+    # List with all information for a motion
+    motion_info = [vote_id, date, quarter, year, leg, passed, yes_count, no_count, absences]
+
+    # Make unique
+    if policy not in policy_dict:
+        policy_dict[policy] = {}
+
+    # Vote_id is key for this motion within the particular policy area
+    policy_dict[policy][vote_id] = motion_info
+
+
+def load():
+    #print("loading data")
+    sim_matrix = np.load('sim_matrix.npy')
+    labels = np.load('labels.npy')
+    all_meps = np.load('all_meps.npy', allow_pickle=True).item()
+    sim_df = pd.DataFrame(sim_matrix, index=labels, columns=labels)
+    return sim_matrix, labels, all_meps
+
+if access in policy_dict:
+    vote_ids = list(policy_dict[access].keys())
+    #print("Vote IDs for", access, ":", vote_ids)
+else:
+    print("bro check your spelling")
+
+policy_year_votes = {}
+
+if access in policy_dict:
+    for vote_id, motion_info in policy_dict[access].items():
+        year = motion_info[3]  # Year is the 4th element in motion_info
+        if year not in policy_year_votes:
+            policy_year_votes[year] = []
+        policy_year_votes[year].append(vote_id)
+else:
+    raise ValueError("Spelling broooor")
+
+
+sim_matrix, labels, all_meps = load()
+mep_policy_votes = {}
+
+for mep_id, mep in all_meps.items():
+    votes_list = mep.get("votes", [])
+    policy_votes = []
+    for vote_id in vote_ids:
+        if vote_id - 1 < len(votes_list):
+            index = vote_id - 1
+            policy_votes.append(votes_list[index])
+    mep_policy_votes[mep_id] = policy_votes
+
+def check_similarity(mep_policy_votes):
+
+    def similarity_measure(votes1, votes2):
+        """
+        Measure pairwise voters' votes similarity.
+        Only compares positions where both votes are not None.
+        Returns the fraction of matching votes; if no comparisons, returns 0.5.
+        """
+        same = 0
+        count = 0
+        for v1, v2 in zip(votes1, votes2):
+            if v1 is not None and v2 is not None:
+                count += 1
+                if v1 == v2:
+                    same += 1
+        return same / count if count > 0 else 0.5
+
+    def similarity_matrix(mep_policy_votes):
+        # Extract MEP IDs for maintaining row/column alignment
+        mep_ids = list(mep_policy_votes.keys())
+        # Initialize similarity matrix
+        n = len(mep_ids)
+        sim_matrix = np.zeros((n, n))
+
+        for i, mep1 in enumerate(mep_ids):
+            votes1 = mep_policy_votes[mep1]
+            if i % 100 == 0:
+                print(f"Processing MEP {mep1} ({i + 1}/{n})")
+            for j, mep2 in enumerate(mep_ids[i:], start=i):  # Start at `i` for symmetry
+                votes2 = mep_policy_votes[mep2]
+                measure = similarity_measure(votes1, votes2)
+                sim_matrix[i, j] = measure
+                sim_matrix[j, i] = measure
+
+        return sim_matrix, mep_ids
+
+    sim_matrix, mep_ids = similarity_matrix(mep_policy_votes)
+    return sim_matrix, mep_ids
+
+def MDS(D, dims):
+    D = np.where(D == None, 0.5, D)
+    D = np.nan_to_num(D, nan=0.5, posinf=0.5, neginf=0.5)
+    D = D.astype(float)
+
+    n = len(D[0])
+    D2 = D**2
+    II = np.eye(n)
+    I = np.ones((n, 1))
+    H = II - (I@I.T)/n
+    B = -0.5 *H@D2@H
+    B = (B+B.T)/2
+    print("B is symmetric: ", np.allclose(B, B.T))  # B is symmetric
+    print(np.isnan(D).any())  # This is False
+    print(np.isinf(D).any())  # This is False
+    print((D < 0).any())      # This is False
+
+    eigenvals, eigenvecs = np.linalg.eig(B)
+    eigenvals = np.real(eigenvals)
+    eigenvecs = np.real(eigenvecs)
+    sorters = np.argsort(eigenvals)[::-1]
+    eigenvals = eigenvals[sorters]
+    eigenvecs = eigenvecs[:, sorters]
+    eigenvals[eigenvals < 0] = 0  # Set negatives to 0  i dont know why these even exist ffs
+    values_matrix = np.diag(np.sqrt(eigenvals[:dims]))
+    vector_matrix = eigenvecs[:, :dims]
+
+    projection = vector_matrix @ values_matrix
+    return projection, eigenvals, eigenvecs
+
+sim_matrix, labels = check_similarity(mep_policy_votes)
+sim_df = pd.DataFrame(sim_matrix, index=labels, columns=labels)
+
+# Slice the first 5 rows and columns for a small check
+sim_df_subset = sim_df.iloc[:5, :5]
+print("Similarity Matrix (First 5 Rows and Columns):")
+print(sim_df_subset.to_string())
+
+
+# Convert for Classic MDS
+dis_matrix = 1 - sim_matrix
+projection, eigenvals, eigenvecs = MDS(dis_matrix, 2)
+print("Projection shape:", projection.shape)
+
+# Normalize eigenvalues
+eigenvals_normalized = eigenvals / np.sum(eigenvals)
+
+# Cumulative proportion of variance explained
+cumulative_variance = np.cumsum(eigenvals_normalized)
+
+# Plot the eigenvalues
+plt.figure(figsize=(10, 6))
+plt.plot(eigenvals_normalized, marker='o', label='Variance Explained')
+plt.plot(cumulative_variance, marker='o', linestyle='--', label='Cumulative Variance')
+plt.title('Scree Plot')
+plt.xlabel('Dimension')
+plt.ylabel('Proportion of Variance Explained')
+plt.axhline(y=0.95, color='r', linestyle='--', label='95% Variance Threshold')
+plt.legend()
+plt.grid()
+plt.show()
+
+
+
+def plot_embedding(projection, all_meps, title, feature='country'):
+    """
+    Plots 2D embedding with unique colors for each value of the specified feature.
+
+    Args:
+    - projection: High-dimensional data to project.
+    - all_meps: Dictionary containing MEP data.
+    - title: Title of the plot.
+    - feature: Feature to use for coloring ('country' or 'epg').
+    """
+
+    plt.figure(figsize=(14, 8))
+
+    feature_values = [all_meps[label][feature] for label in all_meps.keys()]
+    unique_features = list(set(feature_values))
+    num_features = len(unique_features)
+
+
+    # Generate distinct colors for large numbers of categories
+    if num_features <= 10:
+        color_map = cm.get_cmap('tab10', num_features)
+    elif num_features <= 20:
+        color_map = cm.get_cmap('tab20', num_features)
+    else:
+        base_cmap = cm.get_cmap('tab20b')
+        colors = [base_cmap(i / num_features) for i in range(num_features)]
+        color_map = lambda i: colors[i]
+
+    # Map each feature value to a unique color
+    feature_to_color = {feature: color_map(i) for i, feature in enumerate(unique_features)}
+
+    for label, (x, y) in zip(all_meps.keys(), projection):
+        mep_info = all_meps[label]
+        value = mep_info[feature]
+        color = feature_to_color[value]
+
+        # Plot each MEP as a scatter point
+        plt.scatter(x, y, alpha=0.7, color=color, label=None)
+
+    # Add a legend for the feature values
+    legend_patches = [
+        plt.Line2D([0], [0], marker='o', color=color, linestyle='', markersize=8, label=feature)
+        for feature, color in feature_to_color.items()
+    ]
+    plt.legend(handles=legend_patches, title=feature.capitalize(), bbox_to_anchor=(1.05, 1), loc='upper left')
+
+    plt.title(title)
+    plt.xlabel("PCA Dimension 1")
+    plt.ylabel("PCA Dimension 2")
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_3d_scatter(projection_3d, all_meps, feature='country'):
+    import pandas as pd
+    import plotly.express as px
+    import plotly.colors as pc
+
+    # Prepare data for the plot
+    data = []
+    feature_values = []
+    for label, (x, y, z) in zip(all_meps.keys(), projection_3d):
+        value = all_meps[label][feature]
+        data.append({'x': x, 'y': y, 'z': z, feature: value})
+        feature_values.append(value)
+
+    df = pd.DataFrame(data)
+
+    # Create a unique color mapping for the feature
+    unique_features = sorted(set(map(str, feature_values)))  # Convert all values to strings
+    num_colors = len(unique_features)
+
+    # Choose or generate a color palette
+    if num_colors <= 10:
+        colors = px.colors.qualitative.T10  # Tab10 palette for <= 10 unique values
+    elif num_colors <= 20:
+        colors = px.colors.qualitative.Set3  # Set3 palette for <= 20 unique values
+    else:
+        colors = pc.qualitative.Alphabet
+
+    # Map each unique feature to a color
+    color_map = {feature_value: colors[i % len(colors)] for i, feature_value in enumerate(unique_features)}
+
+    # Add the color mapping to the DataFrame
+    df['color'] = df[feature].map(lambda x: color_map[str(x)])  # Map using string keys    # Create a 3D scatter plot using Plotly Express
+    fig = px.scatter_3d(df, x='x', y='y', z='z',
+                        color=feature,
+                        title=f"3D Projection by {feature.capitalize()}",
+                        color_discrete_map=color_map)
+    fig.show()
+
+
+yearly_similarity = {}
+yearly_dist = {}
+yearly_2d_proj = {}
+yearly_3d_proj = {}
+
+for year, year_vote_idx in policy_year_votes.items():
+    yearly_mep_policy_votes = {}
+
+    for mep_id, mep in all_meps.items():
+        votes_list = mep.get("votes", [])
+        policy_votes = []
+
+        for vote_id in year_vote_idx:
+            if vote_id - 1 < len(votes_list):
+                idx = vote_id - 1
+                policy_votes.append(votes_list[idx])
+
+        yearly_mep_policy_votes[mep_id] = policy_votes
+
+    sim_matrix, labels = check_similarity(yearly_mep_policy_votes)
+    yearly_similarity[year] = sim_matrix
+    yearly_dist[year] = 1 - sim_matrix
+    dist_year = 1 - sim_matrix
+    projection2, eigenvals, eigenvecs = MDS(dist_year, 2)
+    projection3, eigenvals, eigenvecs = MDS(dist_year, 3)
+
+    projection2_test = eigenvecs[:, :2] @ np.diag(np.sqrt(eigenvals[:2]))
+    projection3_test = eigenvecs[:, :3] @ np.diag(np.sqrt(eigenvals[:3]))
+
+    plot_3d_scatter(projection3, all_meps, feature='epg')
+    plot_3d_scatter(projection3, all_meps, feature='country')
+    plot_embedding(projection2, all_meps, title=f"2D Projection for {year}", feature='epg')
+    plot_embedding(projection2, all_meps, title=f"2D Projection for {year}", feature='country')
