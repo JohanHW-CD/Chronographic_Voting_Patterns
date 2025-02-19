@@ -1,2 +1,2 @@
 # votewatchers
-A method of optimizing petitions within the EU democratic system.  
+Analyzing the effect of political bloc membership and nationality on voting patterns in the european parliament. 
