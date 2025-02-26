@@ -1,5 +1,5 @@
 # Chronographic EU Voting Patterns
-You can optimize petition timings within the EU. That's a problem haha. This repo plays with VoteWatchers European Parliament dataset to find contributing variables in voting patterns. 
+You can optimize petition timings within the EU. This repo plays with VoteWatchers European Parliament dataset to find contributing variables in voting patterns. 
 
 ## Trend Examples:
 
