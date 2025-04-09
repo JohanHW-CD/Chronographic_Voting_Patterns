@@ -3,11 +3,11 @@ You can optimize petition timings within the EU. This repo plays with VoteWatche
 
 ## Trend Examples:
 
-Pairwise Similaities between voters, first 46 MEPs alphabetically:
+Pairwise Similaities between voters, first 46 members of parliament alphabetically. A brighter color means they agree more, and a darkar that they disagree. From this, you clearly see which belong to the same groups. The diagonal is from the parliaments member agreeing with themselves, so the diagonal can be ignored (it just shows that it works).
 
 ![image](https://github.com/user-attachments/assets/aa730087-bdaf-4692-af91-e2895bdd8f87)
 
-2D Voting patterns colourd by European Parliament Group:
+2D Voting patterns. The colors are the European Parliament Group they belong to, and this is how they voted on Security Issues the year 2020. You can see how the conservatives and independents grouped together (purple and blue) to vote against Covid restrictions, while all other parties joined  together to be more united than ever in Covid restrictions. In the code, you can switch to specific countries, to see how countries near the borders of Europe and the UK because of Brexit, disagreed with their parliament groups on key issues of security.
 
 ![image](https://github.com/user-attachments/assets/fb7c66f1-894f-484a-8ae5-4dcc7845e111)
 
