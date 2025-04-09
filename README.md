@@ -7,7 +7,7 @@ Pairwise Similaities between voters, first 46 members of parliament alphabetical
 
 ![image](https://github.com/user-attachments/assets/aa730087-bdaf-4692-af91-e2895bdd8f87)
 
-2D Voting patterns. The colors are the European Parliament Group they belong to, and this is how they voted on Security Issues the year 2020. You can see how the conservatives and independents grouped together (purple and blue) to vote against Covid restrictions, while all other parties joined  together to be more united than ever in Covid restrictions. In the code, you can switch to specific countries, to see how countries near the borders of Europe and the UK because of Brexit, disagreed with their parliament groups on key issues of security.
+2D Voting patterns. The colors are the European Parliament Group they belong to, and this is how they voted on Security Issues the year 2019. You clearly see conservatives in brown disagreeing with all other parties, light blue are independent parliament members, thereafter you see the typical political spectrum in the other largeg "body" to the right. In the code, you can switch to specific countries, to see how countries near the borders of Europe and the UK because of Brexit, disagreed with their parliament groups on key issues of security.
 
 ![image](https://github.com/user-attachments/assets/fb7c66f1-894f-484a-8ae5-4dcc7845e111)
 
